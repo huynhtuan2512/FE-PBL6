@@ -1,0 +1,7 @@
+import { ArrowRight, ShoppingBasket } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { formatVnd } from '../mockData';
+
+export default function FloatingCart({ count, total, onOpen }) {
+  return <motion.aside initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} className="fixed inset-x-4 z-20 mx-auto max-w-xl" style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }} aria-label="Tóm tắt giỏ hàng"><button type="button" onClick={onOpen} className="flex min-h-[56px] w-full min-w-[44px] cursor-pointer items-center justify-between gap-3 rounded-2xl bg-slate-900 px-3 py-3 text-white shadow-float transition-transform duration-150 hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-red-200 active:scale-95"><span className="flex min-w-0 items-center gap-3"><span className="grid h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 place-items-center rounded-xl bg-white/10"><ShoppingBasket aria-hidden="true" size={19} /></span><span className="min-w-0 text-left"><strong className="block truncate text-sm">{count} món trong giỏ</strong><span className="block truncate text-xs text-white">Bàn của bạn · Đặt tại chỗ</span></span></span><span className="flex items-center gap-2 whitespace-nowrap text-sm font-bold">{formatVnd(total)}<ArrowRight aria-hidden="true" size={17} /></span></button></motion.aside>;
+}
