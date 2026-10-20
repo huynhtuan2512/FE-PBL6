@@ -1,0 +1,78 @@
+.design-system-root {
+  min-height: 100vh;
+  color: var(--color-text);
+  font-family: var(--font-family);
+}
+
+.ds-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-7);
+}
+
+.ds-page-header-copy {
+  min-width: min(100%, 320px);
+}
+
+.ds-page-header-eyebrow,
+.ds-section-header-eyebrow {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.ds-page-header-title.ant-typography,
+.ds-section-header-title.ant-typography {
+  margin-block: var(--space-2) 0;
+  color: var(--color-text);
+}
+
+.ds-page-header-description.ant-typography {
+  margin-block: var(--space-2) 0 0;
+  color: var(--color-text-secondary);
+}
+
+.ds-page-header-extra,
+.ds-section-header-extra {
+  max-width: 100%;
+}
+
+.ds-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.ds-section-header-title.ant-typography {
+  margin-block-start: var(--space-2);
+}
+
+.ds-content-panel.ant-card {
+  border-color: var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.ds-data-state {
+  margin-block: var(--space-4);
+}
+
+.ds-data-state-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: var(--control-height-lg);
+  color: var(--color-text-secondary);
+}
+
+.ds-data-state-empty {
+  padding-block: var(--space-4);
+}

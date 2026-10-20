@@ -1,0 +1,209 @@
+.staff-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.staff-workspace .ds-page-header {
+  margin-bottom: 0;
+}
+
+.staff-page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.staff-update-times {
+  align-items: flex-end;
+}
+
+.staff-tables-panel.ant-card,
+.staff-kitchen-panel.ant-card,
+.staff-checkout-panel.ant-card,
+.staff-ai-panel.ant-card {
+  min-width: 0;
+  border-color: var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.staff-section-header {
+  margin-bottom: var(--space-4);
+}
+
+.staff-unavailable-state {
+  padding-block: var(--space-2);
+}
+
+.staff-menu-state {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.staff-menu-state .ds-data-state {
+  margin-block: 0;
+}
+
+.staff-workflow-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.8fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.staff-kds-content {
+  width: 100%;
+}
+
+.kds-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.kds-ticket {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.staff-ticket-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.staff-ticket-time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.staff-ticket-dishes {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.staff-ticket-dish {
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+
+.staff-ticket-action.ant-btn {
+  width: 100%;
+  min-height: var(--control-height-md);
+}
+
+.staff-ticket-hint,
+.staff-payment-note {
+  display: block;
+}
+
+.staff-ticket-hint {
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.staff-kitchen-panel .ticket-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: 0;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.staff-pos-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.staff-pos-order-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.staff-pos-title.ant-typography {
+  margin-block: var(--space-1) 0;
+  font-size: var(--font-size-lg);
+}
+
+.staff-order-select {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.staff-pos-items {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-block: var(--space-2);
+  border-block: 1px solid var(--color-border);
+}
+
+.staff-pos-item {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.staff-pos-total {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.staff-pos-complete.ant-btn {
+  width: 100%;
+  min-height: var(--control-height-md);
+}
+
+.staff-payment-note.ant-typography {
+  margin-block: var(--space-3) 0;
+}
+
+.staff-ai-panel .staff-section-header {
+  align-items: center;
+}
+
+.staff-ai-panel .ant-card-body > .ant-typography {
+  display: block;
+}
+
+@media (max-width: 1100px) {
+  .staff-workflow-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .staff-workspace {
+    gap: var(--space-4);
+  }
+
+  .staff-page-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .staff-update-times {
+    align-items: flex-start;
+  }
+
+  .kds-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,22 @@
+ 
+# Bỏ qua thư mục node_modules (Bắt buộc)
+node_modules/
+
+# Bỏ qua thư mục build đầu ra
+dist/
+
+# Bỏ qua các file cấu hình môi trường chứa mật khẩu/token bí mật
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Bỏ qua các file nén không cần thiết
+*.zip
+*.tar.gz
+
+# Bỏ qua file log lỗi của hệ thống
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
