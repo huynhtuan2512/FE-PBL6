@@ -1,21 +1,78 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { categories, dishes, getTableFromUrl } from './mockData';
+import { getTableFromUrl } from './mockData';
+import { createOrder, getCategories, getMenu, getTableStatus } from './services/restaurantApi';
 import Header from './components/Header';
 import Banner from './components/Banner';
 import CategoryScroll from './components/CategoryScroll';
 import DishGrid from './components/DishGrid';
 import FloatingCart from './components/FloatingCart';
 import CartModal from './components/CartModal';
+import CustomerOrderTracking from './components/CustomerOrderTracking';
 
 export default function App() {
-  const [table] = useState(getTableFromUrl);
+  const [tableId] = useState(() => getTableFromUrl().table_id);
+  const [table, setTable] = useState(null);
+  const [tableLoading, setTableLoading] = useState(true);
+  const [tableError, setTableError] = useState('');
+  const [dishes, setDishes] = useState([]);
+  const [categories, setCategories] = useState(['Tất cả']);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState('');
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Tất cả');
   const [cart, setCart] = useState({});
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [note, setNote] = useState('');
   const [confirmedOrder, setConfirmedOrder] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const trackingStorageKey = `restaurant:last-order:${tableId}`;
+  const [trackedOrderId, setTrackedOrderId] = useState(
+    () => window.localStorage.getItem(trackingStorageKey) || '',
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getTableStatus(tableId, controller.signal)
+      .then((value) => {
+        setTable(value);
+        setTableError('');
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          setTable(null);
+          setTableError(error.message || 'Không tìm thấy bàn.')
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTableLoading(false)
+      });
+
+    return () => controller.abort();
+  }, [tableId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([getMenu(controller.signal), getCategories(controller.signal)])
+      .then(([menu, categoryList]) => {
+        const categoryNames = new Map(categoryList.map((category) => [category.category_id, category.category_name]));
+        setDishes(menu.map((dish) => ({
+          ...dish,
+          category: categoryNames.get(dish.category_id) || 'Khác',
+        })));
+        setCategories(['Tất cả', ...categoryList.map((category) => category.category_name)]);
+        setMenuError('');
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') setMenuError(error.message || 'Không thể tải thực đơn.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setMenuLoading(false)
+      });
+
+    return () => controller.abort();
+  }, []);
 
   const filteredDishes = useMemo(() => dishes.filter((dish) => {
     const matchesCategory = activeCategory === 'Tất cả' || dish.category === activeCategory;
@@ -26,6 +83,18 @@ export default function App() {
   const cartItems = useMemo(() => Object.values(cart), [cart]);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const cartTotal = cartItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+  const tableCanOrder = table && ['EMPTY', 'OCCUPIED'].includes(table.status);
+  const tableStatusText = {
+    EMPTY: 'Bàn trống · sẵn sàng nhận món',
+    OCCUPIED: 'Bàn đang sử dụng · có thể gọi thêm món',
+    RESERVED: 'Bàn đã được đặt · hiện chưa thể gọi món',
+    CLEANING: 'Bàn đang được dọn · hiện chưa thể gọi món',
+  }[table?.status] ?? table?.status;
+
+  const rememberTrackedOrder = useCallback((orderId) => {
+    setTrackedOrderId(orderId);
+    window.localStorage.setItem(trackingStorageKey, orderId);
+  }, [trackingStorageKey]);
 
   const addToCart = (dish) => setCart((current) => ({
     ...current,
@@ -48,24 +117,31 @@ export default function App() {
     return next;
   });
 
-  const confirmOrder = () => {
-    const order = {
-      order_id: 101,
-      table_id: table.table_id,
-      total_amount: cartTotal,
-      order_status: 'PENDING',
-      created_at: '2026-09-23T10:00:00Z',
-      order_details: cartItems.map((item, index) => ({
-        detail_id: index + 1,
-        dish_id: item.dish_id,
-        quantity: item.quantity,
-        served_status: false,
-      })),
-    };
-    console.log('Robot Restaurant order created:', order, note ? { kitchen_note: note } : '');
-    setConfirmedOrder(order);
-    setCart({});
-    setNote('');
+  const confirmOrder = async () => {
+    if (!tableCanOrder) {
+      setOrderError('Bàn này hiện không thể nhận đơn mới.')
+      return
+    }
+    setSubmitting(true);
+    setOrderError('');
+    try {
+      const order = await createOrder({
+        table_id: table.table_id,
+        items: cartItems.map((item) => ({
+          dish_id: item.dish_id,
+          quantity: item.quantity,
+          notes: note.trim() || null,
+        })),
+      });
+      setConfirmedOrder(order);
+      rememberTrackedOrder(order.order_id);
+      setCart({});
+      setNote('');
+    } catch (error) {
+      setOrderError(error.message || 'Không thể gửi đơn hàng. Vui lòng thử lại.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -83,9 +159,32 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#FFFAF5] text-slate-900">
-      <Header table={table} query={query} onQueryChange={setQuery} cartCount={cartCount} onOpenCart={() => setIsCartOpen(true)} />
+      <Header table={table ?? { table_id: tableId, table_number: null }} query={query} onQueryChange={setQuery} cartCount={cartCount} onOpenCart={() => setIsCartOpen(true)} />
       <main className="mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 sm:pt-8 lg:px-8">
         <Banner />
+        {tableLoading && <p role="status" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">Đang xác minh bàn {tableId}...</p>}
+        {!tableLoading && tableError && (
+          <div role="alert" className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            <p className="font-bold">Không thể đặt món vì mã bàn không hợp lệ.</p>
+            <p className="mt-1">{tableError}</p>
+            <p className="mt-1">Hãy quét lại mã QR tại bàn hoặc liên hệ nhân viên.</p>
+          </div>
+        )}
+        {table && (
+          <div className={`mt-5 rounded-2xl border p-4 text-sm font-semibold ${
+            tableCanOrder ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'
+          }`}>
+            Bàn {String(table.table_number).padStart(2, '0')} · {tableStatusText}
+          </div>
+        )}
+        {menuLoading && <p role="status" className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">Đang tải thực đơn...</p>}
+        {menuError && <div role="alert" className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p className="font-bold">Không thể tải thực đơn từ máy chủ.</p><p className="mt-1">{menuError}</p><button type="button" onClick={() => window.location.reload()} className="mt-3 min-h-[44px] rounded-full bg-red-600 px-4 py-2 font-bold text-white">Thử lại</button></div>}
+        <CustomerOrderTracking
+          tableId={tableId}
+          initialOrderId={trackedOrderId}
+          dishes={dishes}
+          onOrderFound={rememberTrackedOrder}
+        />
         <section className="mt-8" aria-labelledby="category-title">
           <div className="mb-4 flex items-end justify-between gap-4">
             <div>
@@ -109,8 +208,8 @@ export default function App() {
         </section>
       </main>
       <AnimatePresence>{cartCount > 0 && <FloatingCart count={cartCount} total={cartTotal} onOpen={() => setIsCartOpen(true)} />}</AnimatePresence>
-      <CartModal open={isCartOpen} cartItems={cartItems} total={cartTotal} note={note} table={table} confirmedOrder={confirmedOrder} onClose={closeModal} onAdd={addToCart} onDecrease={decreaseFromCart} onRemove={removeFromCart} onNoteChange={setNote} onConfirm={confirmOrder} />
-      <footer className="pb-8 text-center text-xs font-semibold text-slate-800">Robot Restaurant · {table.table_id} · Sẵn sàng phục vụ</footer>
+      <CartModal open={isCartOpen} cartItems={cartItems} total={cartTotal} note={note} table={table ?? { table_id: tableId, table_number: null }} confirmedOrder={confirmedOrder} submitting={submitting} orderError={orderError} orderDisabled={!tableCanOrder || tableLoading} onClose={closeModal} onViewOrder={() => { closeModal(); document.getElementById('order-tracking')?.scrollIntoView({ behavior: 'smooth' }) }} onAdd={addToCart} onDecrease={decreaseFromCart} onRemove={removeFromCart} onNoteChange={setNote} onConfirm={confirmOrder} />
+      <footer className="pb-8 text-center text-xs font-semibold text-slate-800">Restaurant · {tableId} · Sẵn sàng phục vụ</footer>
     </div>
   );
 }

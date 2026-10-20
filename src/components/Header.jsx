@@ -1,6 +1,10 @@
 import { MapPin, Search, ShoppingBasket, Sparkles } from 'lucide-react';
 
 export default function Header({ table, query, onQueryChange, cartCount, onOpenCart }) {
+  const tableNumber = Number.isInteger(table.table_number)
+    ? `Bàn ${String(table.table_number).padStart(2, '0')}`
+    : `Mã bàn ${table.table_id}`;
+
   return (
     <header className="sticky top-0 z-30 border-b border-slate-300 bg-[#FFFAF5]/95 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
@@ -12,7 +16,7 @@ export default function Header({ table, query, onQueryChange, cartCount, onOpenC
             <p className="truncate font-bold leading-tight text-slate-900">Robot Restaurant</p>
             <span className="mt-1 flex items-center gap-1 text-xs font-bold text-emerald-800">
               <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" /></span>
-              Robot Ready
+              Đặt món trực tuyến
             </span>
           </div>
         </div>
@@ -25,7 +29,7 @@ export default function Header({ table, query, onQueryChange, cartCount, onOpenC
 
         <div className="hidden min-h-[44px] shrink-0 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 sm:flex" title={table.table_id}>
           <MapPin aria-hidden="true" size={15} className="text-red-600" />
-          Bàn {String(table.table_number).padStart(2, '0')}
+          {tableNumber}
         </div>
         <button type="button" onClick={onOpenCart} aria-label={`Mở giỏ hàng, ${cartCount} món`} className="relative grid h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 cursor-pointer place-items-center rounded-full bg-slate-900 text-white transition-transform duration-150 hover:bg-red-600 focus:outline-none focus:ring-4 focus:ring-red-100 active:scale-95">
           <ShoppingBasket aria-hidden="true" size={19} />
@@ -34,7 +38,7 @@ export default function Header({ table, query, onQueryChange, cartCount, onOpenC
       </div>
       <div className="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pb-2 text-xs font-semibold text-slate-700 sm:hidden">
         <Sparkles aria-hidden="true" size={13} className="text-amber-600" />
-        <span>Robot Ready</span><span className="text-slate-700">·</span><span>{table.table_id}</span>
+        <span>Đặt món trực tuyến</span><span className="text-slate-700">·</span><span>{tableNumber}</span>
       </div>
     </header>
   );

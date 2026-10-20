@@ -83,7 +83,11 @@ export const categories = ['Tất cả', 'Cơm', 'Bún & Phở', 'Món nhẹ', '
 
 export const getTableFromUrl = () => {
   const tableId = new URLSearchParams(window.location.search).get('table_id') || 'TABLE_01';
-  return tables.find((table) => table.table_id === tableId) || tables[0];
+  const existingTable = tables.find((table) => table.table_id === tableId);
+  if (existingTable) return existingTable;
+
+  const tableNumber = Number(tableId.match(/(\d+)$/)?.[1]);
+  return { table_id: tableId, table_number: tableNumber || 0 };
 };
 
 export const formatVnd = (amount) => `${new Intl.NumberFormat('vi-VN').format(amount)}đ`;
