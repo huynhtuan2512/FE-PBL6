@@ -18,6 +18,10 @@
   align-items: flex-end;
 }
 
+.staff-order-search {
+  width: min(16rem, 100%);
+}
+
 .staff-tables-panel.ant-card,
 .staff-kitchen-panel.ant-card,
 .staff-checkout-panel.ant-card,
@@ -32,8 +36,25 @@
   margin-bottom: var(--space-4);
 }
 
-.staff-unavailable-state {
-  padding-block: var(--space-2);
+.staff-table-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.staff-table-item {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.staff-table-qr {
+  overflow-wrap: anywhere;
 }
 
 .staff-menu-state {
@@ -96,6 +117,11 @@
   padding-block: var(--space-2);
   border-bottom: 1px solid var(--color-border);
   overflow-wrap: anywhere;
+}
+
+.staff-ticket-dish-row {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .staff-ticket-action.ant-btn {
@@ -197,6 +223,10 @@
   .staff-page-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .staff-order-search {
+    width: 100%;
   }
 
   .staff-update-times {

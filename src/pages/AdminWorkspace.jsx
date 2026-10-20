@@ -1,28 +1,28 @@
 import { useMemo, useState } from 'react'
 import { Alert, Button, Input, Space, Table, Tabs, Tag, Typography } from 'antd'
 import {
-  Cube as Boxes,
   ChartLineUp as ChartNoAxesCombined,
   FileText as FileClock,
   List as Menu,
   Pencil,
   Plus,
-  ArrowsClockwise as RefreshCw,
   ShieldCheck,
   User as UserRound,
 } from '@phosphor-icons/react'
-import TableSwapModal from '../components/tables/TableSwapModal'
+import OrderTableTransferModal from '../components/tables/OrderTableTransferModal'
+import CategoryAdmin from '../components/admin/CategoryAdmin'
 import DishFormModal from '../components/admin/DishFormModal'
+import ReportsAdmin from '../components/admin/ReportsAdmin'
 import UserFormModal from '../components/admin/UserFormModal'
 import ContentPanel from '../components/common/ContentPanel'
 import DataState from '../components/common/DataState'
 import PageHeader from '../components/common/PageHeader'
 import SectionHeader from '../components/common/SectionHeader'
 import { useApi } from '../hooks/useApi'
-import { getDishes, setDishStatus } from '../services/dishService'
-import { getUsers } from '../services/adminService'
+import { getAdminDishes, setDishStatus } from '../services/dishService'
+import { getAuditLogs, getUsers } from '../services/adminService'
 import { assetUrl, getErrorMessage } from '../services/api'
-import { formatVND } from '../utils/format'
+import { formatClock, formatVND } from '../utils/format'
 import './admin-workspace.css'
 
 const USER_ROLE_LABELS = {
@@ -35,15 +35,15 @@ const getUserRoleLabel = (role) => USER_ROLE_LABELS[role] ?? role ?? 'Chưa xác
 
 const adminSections = [
   { key: 'menu', label: 'Thực đơn', icon: Menu },
+  { key: 'categories', label: 'Danh mục món', icon: Menu },
   { key: 'users', label: 'Tài khoản & phân quyền', icon: UserRound },
-  { key: 'inventory', label: 'Kho nguyên liệu', icon: Boxes },
-  { key: 'logs', label: 'Nhật ký robot', icon: FileClock },
+  { key: 'logs', label: 'Nhật ký hệ thống', icon: FileClock },
   { key: 'reports', label: 'Báo cáo', icon: ChartNoAxesCombined },
 ]
 
 export default function AdminWorkspace({ onNotify }) {
   const [activeSection, setActiveSection] = useState('menu')
-  const [swapOpen, setSwapOpen] = useState(false)
+  const [transferOpen, setTransferOpen] = useState(false)
 
   return (
     <div className="page-content admin-workspace">
@@ -52,9 +52,11 @@ export default function AdminWorkspace({ onNotify }) {
         title="Quản trị hệ thống"
         description="Quản lý thực đơn, tài khoản và cấu hình vận hành."
         extra={(
-          <Button icon={<RefreshCw size={17} />} onClick={() => setSwapOpen(true)}>
-            Đổi cấu hình tuyến
-          </Button>
+          <Space wrap>
+            <Button onClick={() => setTransferOpen(true)}>
+              Chuyển đơn sang bàn
+            </Button>
+          </Space>
         )}
       />
       <ContentPanel className="admin-panel">
@@ -69,15 +71,19 @@ export default function AdminWorkspace({ onNotify }) {
               ? <MenuAdmin onNotify={onNotify} />
               : key === 'users'
                 ? <UsersAdmin onNotify={onNotify} />
-                : <UnavailableSection section={key} />,
+                : key === 'categories'
+                  ? <CategoryAdmin onNotify={onNotify} />
+                : key === 'logs'
+                  ? <AuditLogs />
+                  : <ReportsAdmin />,
           }))}
         />
       </ContentPanel>
-      {swapOpen && (
-        <TableSwapModal
-          onClose={() => setSwapOpen(false)}
+      {transferOpen && (
+        <OrderTableTransferModal
+          onClose={() => setTransferOpen(false)}
           onSaved={(message) => {
-            setSwapOpen(false)
+            setTransferOpen(false)
             onNotify(message)
           }}
         />
@@ -87,7 +93,7 @@ export default function AdminWorkspace({ onNotify }) {
 }
 
 function MenuAdmin({ onNotify }) {
-  const { data: dishes, loading, error, reload } = useApi(getDishes)
+  const { data: dishes, loading, error, reload } = useApi(getAdminDishes)
   const [editing, setEditing] = useState(undefined)
   const [statusChanging, setStatusChanging] = useState(null)
   const [actionError, setActionError] = useState('')
@@ -171,7 +177,7 @@ function MenuAdmin({ onNotify }) {
   return (
     <section className="admin-section">
       <SectionHeader
-        eyebrow={dishes ? `${dishes.length} món đang bán` : 'Thực đơn'}
+        eyebrow={dishes ? `${dishes.filter((dish) => dish.is_available).length} món đang bán · ${dishes.length} tổng số` : 'Thực đơn'}
         title="Thực đơn và nhãn AI"
         className="admin-section-header"
         extra={(
@@ -184,8 +190,8 @@ function MenuAdmin({ onNotify }) {
         className="admin-action-error"
         type="info"
         showIcon
-        title="Danh sách hiện chỉ gồm các món đang bán."
-        description="Món đã ngừng bán không hiển thị nên không thể sửa hoặc mở bán lại từ danh sách này."
+        title="Danh sách gồm cả món đang bán và đã ngừng bán."
+        description="Dùng nút trạng thái trên từng món để mở bán hoặc ngừng bán."
       />
       {actionError && (
         <Alert
@@ -367,36 +373,47 @@ function UsersAdmin({ onNotify }) {
   )
 }
 
-function UnavailableSection({ section }) {
-  const details = {
-    inventory: {
-      title: 'Chưa có chức năng quản lý kho nguyên liệu.',
-      description: 'Tồn kho, ngưỡng cảnh báo và giao dịch nhập xuất chưa được kết nối.',
-      empty: 'Chưa có dữ liệu kho để hiển thị.',
-    },
-    logs: {
-      title: 'Chưa có chức năng tra cứu nhật ký robot.',
-      description: 'Nhật ký di chuyển chưa được kết nối với màn hình quản trị.',
-      empty: 'Chưa có dữ liệu nhật ký robot.',
-    },
-    reports: {
-      title: 'Chưa có chức năng báo cáo vận hành.',
-      description: 'Doanh thu, số đơn và hiệu suất chưa có nguồn dữ liệu tổng hợp.',
-      empty: 'Chưa có dữ liệu báo cáo vận hành.',
-    },
-  }[section]
-
-  const heading = {
-    inventory: 'Kho nguyên liệu',
-    logs: 'Nhật ký di chuyển robot',
-    reports: 'Báo cáo vận hành',
-  }[section]
+function AuditLogs() {
+  const { data: logs, loading, error, reload } = useApi(getAuditLogs)
+  const columns = [
+    { title: 'Thời gian', dataIndex: 'created_at', key: 'created_at', render: (value) => value ? formatClock(value) : '—' },
+    { title: 'Người dùng', dataIndex: 'user_id', key: 'user_id', render: (value) => value ?? 'Hệ thống' },
+    { title: 'Hành động', dataIndex: 'action', key: 'action' },
+    { title: 'Bảng dữ liệu', dataIndex: 'table_name', key: 'table_name' },
+    { title: 'Chi tiết', dataIndex: 'description', key: 'description' },
+  ]
 
   return (
     <section className="admin-section">
-      <SectionHeader title={heading} className="admin-section-header" />
-      <Alert type="info" showIcon title={details.title} description={details.description} />
-      <DataState status="empty" message={details.empty} />
+      <SectionHeader
+        eyebrow="Tối đa 100 bản ghi mới nhất"
+        title="Nhật ký hệ thống"
+        className="admin-section-header"
+      />
+      {loading && logs === null && <DataState status="loading" message="Đang tải nhật ký hệ thống..." />}
+      {error && logs === null && <DataState status="error" error={error} onRetry={() => reload()} />}
+      {error && logs && (
+        <Alert
+          className="admin-action-error"
+          type="warning"
+          showIcon
+          title="Không thể đồng bộ nhật ký mới nhất."
+          description={error}
+          action={<Button onClick={() => reload()}>Thử lại</Button>}
+        />
+      )}
+      {logs && (
+        <Table
+          className="admin-data-table"
+          rowKey="log_id"
+          columns={columns}
+          dataSource={logs}
+          loading={loading}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
+          scroll={{ x: 680 }}
+          locale={{ emptyText: 'Chưa có nhật ký hệ thống.' }}
+        />
+      )}
     </section>
   )
 }

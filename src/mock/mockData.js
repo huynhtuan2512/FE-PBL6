@@ -55,7 +55,7 @@ export const dishes = [
 
 export const orders = [
   { order_id: 1042, table_id: 1, created_by_user_id: 3, total_amount: 246000, order_status: 'DELIVERING', created_at: '2026-09-24T14:23:00' },
-  { order_id: 1041, table_id: 6, created_by_user_id: 2, total_amount: 154000, order_status: 'PREPARING', created_at: '2026-09-24T14:21:00' },
+  { order_id: 1041, table_id: 6, created_by_user_id: 2, total_amount: 154000, order_status: 'PROCESSING', created_at: '2026-09-24T14:21:00' },
   { order_id: 1040, table_id: 3, created_by_user_id: 3, total_amount: 92000, order_status: 'PENDING', created_at: '2026-09-24T14:18:00' },
   { order_id: 1039, table_id: 2, created_by_user_id: 2, total_amount: 318000, order_status: 'COMPLETED', created_at: '2026-09-24T13:56:00' },
 ]

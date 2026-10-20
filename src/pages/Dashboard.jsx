@@ -1,285 +1,150 @@
-import { Alert, Button, Card, Space, Table, Tag, Tooltip, Typography } from 'antd'
-import {
-  ArrowUpRight,
-  House as Home,
-  ArrowCounterClockwise as RotateCcw,
-  Warning as ShieldAlert,
-  Siren,
-} from '@phosphor-icons/react'
-import { Link } from 'react-router-dom'
+import { Alert, Card, Col, Row, Statistic, Table, Tag, Typography } from 'antd'
 import ContentPanel from '../components/common/ContentPanel'
 import DataState from '../components/common/DataState'
-import MetricsBar from '../components/common/MetricsBar'
 import PageHeader from '../components/common/PageHeader'
-import RobotMap2D from '../components/map/RobotMap2D'
 import SectionHeader from '../components/common/SectionHeader'
-import { useAuth } from '../context/AuthContext'
 import { useApi } from '../hooks/useApi'
+import { getInvoices } from '../services/invoiceService'
 import { getOrders } from '../services/orderService'
-import { getRobotStatuses } from '../services/robotService'
-import { getNodes } from '../services/adminService'
+import { getTables } from '../services/tableService'
 import { formatClock, formatVND } from '../utils/format'
 import './dashboard.css'
 
 const ORDER_STATUS = {
   PENDING: { label: 'Chờ xử lý', color: 'gold' },
-  PREPARING: { label: 'Đang chế biến', color: 'processing' },
-  DELIVERING: { label: 'Đang giao', color: 'blue' },
+  PROCESSING: { label: 'Đang chế biến', color: 'processing' },
+  DELIVERING: { label: 'Đã phục vụ · chờ thanh toán', color: 'blue' },
   COMPLETED: { label: 'Hoàn tất', color: 'success' },
   CANCELLED: { label: 'Đã hủy', color: 'default' },
 }
 
-const ROBOT_STATUS = {
-  IDLE: 'Rảnh',
-  MOVING: 'Đang di chuyển',
-  DELIVERING: 'Đang giao hàng',
-  RETURNING: 'Đang về bếp',
-  CHARGING: 'Đang sạc',
-  ERROR: 'Lỗi',
-}
-
-const ordersColumns = [
-  {
-    title: 'Đơn hàng',
-    dataIndex: 'order_id',
-    key: 'order_id',
-    render: (orderId) => <Typography.Text strong>#{orderId}</Typography.Text>,
-  },
-  {
-    title: 'Bàn',
-    dataIndex: 'table_id',
-    key: 'table_id',
-    render: (tableId) => `Bàn ${tableId}`,
-  },
-  {
-    title: 'Tổng tiền',
-    dataIndex: 'total_amount',
-    key: 'total_amount',
-    render: formatVND,
-  },
-  {
-    title: 'Trạng thái',
-    dataIndex: 'order_status',
-    key: 'order_status',
-    render: (status) => {
-      const descriptor = ORDER_STATUS[status]
-      return <Tag color={descriptor?.color}>{descriptor?.label ?? status}</Tag>
-    },
-  },
-]
-
-function RobotStatusList({ robots, loading, error, onRetry }) {
-  if (loading && robots === null) return <DataState status="loading" message="Đang tải trạng thái robot..." />
-  if (error && robots === null) return <DataState status="error" error={error} onRetry={onRetry} />
-  if (!robots?.length) return <DataState status="empty" message="Chưa có robot gửi trạng thái." />
-
-  return (
-    <div className="dashboard-robot-list">
-      {error && <Alert type="warning" showIcon title="Đang hiển thị trạng thái robot đã tải trước đó." />}
-      {robots.map((robot) => (
-        <div className="dashboard-robot-row" key={robot.id}>
-          <div>
-            <Typography.Text strong>{robot.id}</Typography.Text>
-            <Typography.Text type="secondary">
-              {robot.current_qr_id ? `Vị trí ${robot.current_qr_id}` : 'Chưa có vị trí'}
-              {robot.current_order_id ? ` · Đơn #${robot.current_order_id}` : ''}
-            </Typography.Text>
-          </div>
-          <Space wrap>
-            <Tag color={robot.robot_state === 'ERROR' ? 'error' : 'default'}>
-              {ROBOT_STATUS[robot.robot_state] ?? robot.robot_state}
-            </Tag>
-            {robot.obstacle_detected && <Tag color="warning">Có vật cản</Tag>}
-          </Space>
-        </div>
-      ))}
-    </div>
-  )
+const TABLE_STATUS = {
+  EMPTY: { label: 'Trống', color: 'success' },
+  OCCUPIED: { label: 'Đang dùng', color: 'processing' },
+  RESERVED: { label: 'Đã đặt', color: 'warning' },
+  CLEANING: { label: 'Đang dọn', color: 'default' },
 }
 
 export default function Dashboard() {
-  const { role } = useAuth()
-  const isAdmin = role === 'ADMIN'
-  const {
-    data: orders,
-    loading: ordersLoading,
-    error: ordersError,
-    reload: reloadOrders,
-    lastUpdated: ordersUpdatedAt,
-  } = useApi(getOrders, { interval: 5000 })
-  const {
-    data: robots,
-    loading: robotsLoading,
-    error: robotsError,
-    reload: reloadRobots,
-    lastUpdated: robotsUpdatedAt,
-  } = useApi(getRobotStatuses, { interval: 3000 })
-  const {
-    data: nodes,
-    loading: nodesLoading,
-    error: nodesError,
-    reload: reloadNodes,
-  } = useApi(getNodes, { enabled: isAdmin })
+  const ordersState = useApi(getOrders, { interval: 5000 })
+  const tablesState = useApi(getTables, { interval: 15000 })
+  const invoicesState = useApi(getInvoices, { interval: 30000 })
+  const orders = ordersState.data ?? []
+  const tables = tablesState.data ?? []
+  const invoices = invoicesState.data ?? []
+  const activeOrders = orders.filter(
+    (order) => !['COMPLETED', 'CANCELLED'].includes(order.order_status),
+  ).length
+  const occupiedTables = tables.filter((table) => table.status === 'OCCUPIED').length
+  const paidTotal = invoices
+    .filter((invoice) => invoice.payment_status === 'PAID')
+    .reduce((sum, invoice) => sum + Number(invoice.final_amount), 0)
 
-  const robotList = robots ?? []
-  const alerts = robotList.flatMap((robot) => [
-    ...(robot.obstacle_detected ? [{
-      key: `${robot.id}-obstacle`,
-      type: 'warning',
-      message: `${robot.id} phát hiện vật cản`,
-      description: robot.current_qr_id ? `Vị trí hiện tại: ${robot.current_qr_id}.` : 'Robot chưa báo mã QR vị trí.',
-    }] : []),
-    ...(robot.robot_state === 'ERROR' ? [{
-      key: `${robot.id}-error`,
-      type: 'error',
-      message: `${robot.id} đang ở trạng thái lỗi`,
-      description: robot.current_qr_id ? `Vị trí hiện tại: ${robot.current_qr_id}. Cần kiểm tra robot.` : 'Cần kiểm tra robot.',
-    }] : []),
-  ])
-
-  const disableReason = 'Hệ thống chưa hỗ trợ các thao tác điều khiển này.'
-  const controlActions = [
-    { key: 'stop', label: 'Dừng khẩn cấp', icon: <Siren size={18} />, danger: true },
-    { key: 'home', label: 'Cho robot về bếp', icon: <Home size={18} /> },
-    { key: 'reset', label: 'Đặt lại trạng thái', icon: <RotateCcw size={18} /> },
+  const orderColumns = [
+    { title: 'Mã đơn', dataIndex: 'order_id', key: 'order_id' },
+    { title: 'Bàn', dataIndex: 'table_id', key: 'table_id' },
+    { title: 'Tổng đơn', dataIndex: 'total_amount', key: 'total_amount', render: formatVND },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'order_status',
+      key: 'order_status',
+      render: (status) => <Tag color={ORDER_STATUS[status]?.color}>{ORDER_STATUS[status]?.label ?? status}</Tag>,
+    },
   ]
+
+  const tableColumns = [
+    { title: 'Bàn', dataIndex: 'table_number', key: 'table_number', render: (number) => `Bàn ${String(number).padStart(2, '0')}` },
+    { title: 'Sức chứa', dataIndex: 'capacity', key: 'capacity', render: (capacity) => `${capacity ?? 4} chỗ` },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => <Tag color={TABLE_STATUS[status]?.color}>{TABLE_STATUS[status]?.label ?? status}</Tag>,
+    },
+  ]
+
+  const invoiceColumns = [
+    { title: 'Mã hóa đơn', dataIndex: 'invoice_id', key: 'invoice_id' },
+    { title: 'Mã đơn', dataIndex: 'order_id', key: 'order_id' },
+    { title: 'Thanh toán', dataIndex: 'payment_method', key: 'payment_method' },
+    { title: 'Thực thu', dataIndex: 'final_amount', key: 'final_amount', render: formatVND },
+    { title: 'Thời gian', dataIndex: 'created_at', key: 'created_at', render: (value) => value ? formatClock(value) : '—' },
+  ]
+
+  const renderData = (state, data, columns, rowKey, label) => {
+    if (state.loading && state.data === null) return <DataState status="loading" message={`Đang tải ${label}...`} />
+    if (state.error && state.data === null) return <DataState status="error" error={state.error} onRetry={() => state.reload()} />
+    return (
+      <>
+        {state.error && (
+          <Alert
+            type="warning"
+            showIcon
+            title={`Không thể đồng bộ ${label} mới nhất.`}
+            description="Đang hiển thị dữ liệu đã tải trước đó."
+            action={<button type="button" onClick={() => state.reload()}>Thử lại</button>}
+          />
+        )}
+        <Table
+          className="dashboard-orders-table"
+          columns={columns}
+          dataSource={data.slice(0, 10)}
+          rowKey={rowKey}
+          pagination={false}
+          scroll={{ x: 560 }}
+          loading={state.loading}
+          locale={{ emptyText: `Chưa có ${label}.` }}
+        />
+      </>
+    )
+  }
 
   return (
     <div className="page-content dashboard-page">
       <PageHeader
-        eyebrow="Vận hành"
-        title="Trung tâm điều hành"
-        description="Theo dõi đơn hàng, trạng thái robot và cảnh báo đang cần xử lý."
+        eyebrow="Vận hành nhà hàng"
+        title="Tổng quan"
+        description="Đơn hàng, trạng thái bàn và hóa đơn từ cơ sở dữ liệu."
         extra={(
-          <Space orientation="vertical" size={0} className="dashboard-update-times">
-            <Typography.Text type={ordersError ? 'danger' : 'secondary'}>
-              Đơn hàng cập nhật: {ordersUpdatedAt ? formatClock(ordersUpdatedAt) : 'Chưa có dữ liệu'}
-            </Typography.Text>
-            <Typography.Text type={robotsError ? 'danger' : 'secondary'}>
-              Robot cập nhật: {robotsUpdatedAt ? formatClock(robotsUpdatedAt) : 'Chưa có dữ liệu'}
-            </Typography.Text>
-          </Space>
+          <Typography.Text type="secondary">
+            Cập nhật đơn: {ordersState.lastUpdated ? formatClock(ordersState.lastUpdated) : 'Chưa có dữ liệu'}
+          </Typography.Text>
         )}
       />
 
-      <MetricsBar
-        robots={robots}
-        orders={orders}
-        robotsLoading={robotsLoading}
-        robotsError={robotsError}
-        ordersLoading={ordersLoading}
-        ordersError={ordersError}
+      <Row className="dashboard-metrics" gutter={[12, 12]}>
+        <Col xs={24} sm={8}><Card size="small"><Statistic title="Đơn chưa hoàn tất" value={ordersState.error && ordersState.data === null ? '—' : activeOrders} /></Card></Col>
+        <Col xs={24} sm={8}><Card size="small"><Statistic title="Bàn đang sử dụng" value={tablesState.error && tablesState.data === null ? '—' : `${occupiedTables}/${tables.length}`} /></Card></Col>
+        <Col xs={24} sm={8}><Card size="small"><Statistic title="Thực thu từ 100 hóa đơn gần nhất" value={invoicesState.error && invoicesState.data === null ? '—' : formatVND(paidTotal)} /></Card></Col>
+      </Row>
+
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={14}>
+          <ContentPanel className="dashboard-orders-panel">
+            <SectionHeader title="Đơn hàng gần đây" className="dashboard-card-header" />
+            {renderData(ordersState, orders, orderColumns, 'order_id', 'đơn hàng')}
+          </ContentPanel>
+        </Col>
+        <Col xs={24} xl={10}>
+          <ContentPanel className="dashboard-alerts-panel">
+            <SectionHeader title="Trạng thái bàn" className="dashboard-card-header" />
+            {renderData(tablesState, tables, tableColumns, 'table_id', 'bàn')}
+          </ContentPanel>
+        </Col>
+        <Col xs={24}>
+          <ContentPanel className="dashboard-orders-panel">
+            <SectionHeader title="Hóa đơn gần đây" className="dashboard-card-header" />
+            {renderData(invoicesState, invoices, invoiceColumns, 'invoice_id', 'hóa đơn')}
+          </ContentPanel>
+        </Col>
+      </Row>
+
+      <Alert
+        type="info"
+        showIcon
+        title="Theo dõi robot chưa khả dụng."
+        description="Cơ sở dữ liệu hiện tại không có bảng robot, node hoặc định tuyến."
       />
-
-      <div className="dashboard-primary-grid">
-        <RobotMap2D
-          nodes={nodes}
-          robots={robots}
-          loading={nodesLoading}
-          error={nodesError}
-          onRetry={() => reloadNodes()}
-          restricted={!isAdmin}
-        />
-
-        <Card className="dashboard-control-card">
-          <SectionHeader
-            eyebrow="Thao tác robot"
-            title="Điều khiển từ xa"
-            className="dashboard-card-header"
-          />
-          <Alert
-            className="dashboard-control-notice"
-            type="info"
-            showIcon
-            title={disableReason}
-            description="Các nút vẫn bị khóa vì chưa thể gửi và xác nhận lệnh điều khiển."
-          />
-          <Space orientation="vertical" className="dashboard-control-actions" size="middle">
-            {controlActions.map(({ key, label, icon, danger }) => (
-              <Tooltip title={disableReason} key={key}>
-                <Button block disabled danger={danger} icon={icon}>
-                  {label}
-                </Button>
-              </Tooltip>
-            ))}
-          </Space>
-          <RobotStatusList
-            robots={robots}
-            loading={robotsLoading}
-            error={robotsError}
-            onRetry={() => reloadRobots()}
-          />
-        </Card>
-      </div>
-
-      <div className="dashboard-secondary-grid">
-        <ContentPanel className="dashboard-orders-panel">
-          <SectionHeader
-            eyebrow="Đơn hàng"
-            title="Đơn hàng gần đây"
-            className="dashboard-card-header"
-            extra={<Link className="dashboard-view-all" to="/staff">Xem không gian phục vụ <ArrowUpRight size={15} /></Link>}
-          />
-          {ordersError && (
-            <DataState
-              status="error"
-              error={ordersError}
-              message={orders ? 'Không thể đồng bộ đơn hàng mới' : undefined}
-              onRetry={() => reloadOrders()}
-            />
-          )}
-          {ordersLoading && orders === null && <DataState status="loading" message="Đang tải đơn hàng..." />}
-          {orders && (
-            <Table
-              className="dashboard-orders-table"
-              columns={ordersColumns}
-              dataSource={orders.slice(0, 6)}
-              rowKey="order_id"
-              pagination={false}
-              size="small"
-              scroll={{ x: 520 }}
-              locale={{ emptyText: 'Chưa có đơn hàng.' }}
-            />
-          )}
-        </ContentPanel>
-
-        <ContentPanel className="dashboard-alerts-panel">
-          <SectionHeader
-            eyebrow="Theo dõi robot"
-            title="Cảnh báo cần xử lý"
-            className="dashboard-card-header"
-            extra={<Tag>{robots === null ? '—' : alerts.length}</Tag>}
-          />
-          {robotsLoading && robots === null && <DataState status="loading" message="Đang tải cảnh báo..." />}
-          {!robotsLoading && !robotsError && robotList.length === 0 && (
-            <DataState status="empty" message="Chưa có robot gửi trạng thái để xác định cảnh báo." />
-          )}
-          {robotsError && robots === null && (
-            <Typography.Text type="secondary">Không thể xác định cảnh báo khi chưa tải được trạng thái robot.</Typography.Text>
-          )}
-          {robots && alerts.length === 0 && <DataState status="empty" message="Không có cảnh báo từ trạng thái robot." />}
-          {robotsError && robots && (
-            <Typography.Text type="secondary">Cảnh báo bên dưới dựa trên trạng thái đã tải trước đó.</Typography.Text>
-          )}
-          <Space orientation="vertical" className="dashboard-alert-list" size="middle">
-            {alerts.map((alert) => (
-              <Alert
-                key={alert.key}
-                type={alert.type}
-                showIcon
-                title={alert.message}
-                description={alert.description}
-              />
-            ))}
-          </Space>
-        </ContentPanel>
-      </div>
-
-      {ordersError && orders && (
-        <Typography.Text className="dashboard-stale-note" type="secondary">
-          Đang hiển thị dữ liệu đơn hàng đã tải trước đó; thời điểm cập nhật gần nhất được ghi ở đầu trang.
-        </Typography.Text>
-      )}
     </div>
   )
 }

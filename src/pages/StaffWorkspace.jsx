@@ -1,10 +1,9 @@
-import { useCallback } from 'react'
-import { Alert, Button, Space, Tag, Typography } from 'antd'
+import { useCallback, useMemo, useState } from 'react'
+import { Alert, Button, Input, Space, Tag, Typography } from 'antd'
 import {
   ArrowsClockwise,
   ClipboardText as ClipboardCheck,
   CookingPot,
-  Plus,
   ForkKnife as Utensils,
   Wallet as WalletCards,
 } from '@phosphor-icons/react'
@@ -14,14 +13,16 @@ import PageHeader from '../components/common/PageHeader'
 import SectionHeader from '../components/common/SectionHeader'
 import KitchenKDS from '../components/kitchen/KitchenKDS'
 import POSCheckout from '../components/pos/POSCheckout'
+import TableGrid from '../components/tables/TableGrid'
 import { useApi } from '../hooks/useApi'
 import { getOrders } from '../services/orderService'
 import { getDishes } from '../services/dishService'
-import { getRobotStatuses } from '../services/robotService'
+import { getTables } from '../services/tableService'
 import { formatClock } from '../utils/format'
 import './staff-workspace.css'
 
 export default function StaffWorkspace({ onNotify }) {
+  const [orderSearch, setOrderSearch] = useState('')
   const {
     data: orders,
     loading: ordersLoading,
@@ -36,24 +37,33 @@ export default function StaffWorkspace({ onNotify }) {
     reload: reloadDishes,
   } = useApi(getDishes, { interval: 30000 })
   const {
-    data: robots,
-    loading: robotsLoading,
-    error: robotsError,
-    reload: reloadRobots,
-    lastUpdated: robotsUpdatedAt,
-  } = useApi(getRobotStatuses, { interval: 5000 })
+    data: tables,
+    loading: tablesLoading,
+    error: tablesError,
+    reload: reloadTables,
+  } = useApi(getTables, { interval: 30000 })
 
-  const refresh = useCallback(() => reloadOrders({ silent: true }), [reloadOrders])
+  const refresh = useCallback(
+    () => Promise.all([
+      reloadOrders({ silent: true }),
+      reloadTables({ silent: true }),
+    ]),
+    [reloadOrders, reloadTables],
+  )
   const refreshAll = () => {
     reloadOrders()
     reloadDishes()
-    reloadRobots()
+    reloadTables()
   }
 
-  const ticketCount = (orders ?? []).filter((order) =>
-    ['PENDING', 'PREPARING'].includes(order.order_status),
+  const matchingOrders = useMemo(
+    () => orders === null ? null : orders.filter((order) => matchesOrderSearch(order, orderSearch)),
+    [orders, orderSearch],
+  )
+  const isRefreshing = ordersLoading || dishesLoading || tablesLoading
+  const ticketCount = (matchingOrders ?? []).filter((order) =>
+    ['PENDING', 'PROCESSING'].includes(order.order_status),
   ).length
-  const isRefreshing = ordersLoading || dishesLoading || robotsLoading
 
   return (
     <div className="page-content staff-workspace">
@@ -67,10 +77,16 @@ export default function StaffWorkspace({ onNotify }) {
               <Typography.Text type={ordersError ? 'danger' : 'secondary'}>
                 Đơn hàng: {ordersUpdatedAt ? formatClock(ordersUpdatedAt) : 'Chưa cập nhật'}
               </Typography.Text>
-              <Typography.Text type={robotsError ? 'danger' : 'secondary'}>
-                Robot: {robotsUpdatedAt ? formatClock(robotsUpdatedAt) : 'Chưa cập nhật'}
-              </Typography.Text>
+              <Typography.Text type="secondary">Theo dõi robot chưa có trong cơ sở dữ liệu.</Typography.Text>
             </Space>
+            <Input.Search
+              className="staff-order-search"
+              aria-label="Tìm đơn theo mã đơn hoặc mã bàn"
+              placeholder="Tìm mã đơn hoặc bàn"
+              value={orderSearch}
+              onChange={(event) => setOrderSearch(event.target.value)}
+              allowClear
+            />
             <Button icon={<ArrowsClockwise size={17} />} loading={isRefreshing} onClick={refreshAll}>
               Làm mới
             </Button>
@@ -83,22 +99,32 @@ export default function StaffWorkspace({ onNotify }) {
           eyebrow="Sảnh"
           title="Trạng thái bàn"
           className="staff-section-header"
-          extra={<Tag color="default">Chưa đồng bộ</Tag>}
+          extra={(
+            <Tag color={tablesError ? 'error' : 'default'}>
+              {tablesLoading && tables === null ? 'Đang tải' : tablesError ? 'Lỗi đồng bộ' : `${tables?.length ?? 0} bàn`}
+            </Tag>
+          )}
         />
+        {tablesLoading && tables === null && <DataState status="loading" message="Đang tải trạng thái bàn..." />}
+        {tablesError && tables === null && (
+          <DataState status="error" error={tablesError} onRetry={() => reloadTables()} />
+        )}
+        {tablesError && tables !== null && (
+          <Alert
+            type="warning"
+            showIcon
+            title="Không thể đồng bộ trạng thái bàn mới nhất."
+            description="Đang hiển thị dữ liệu đã tải trước đó."
+            action={<Button onClick={() => reloadTables()}>Thử lại</Button>}
+          />
+        )}
+        {tables && <TableGrid tables={tables} />}
         <Alert
           type="info"
           showIcon
-          title="Hệ thống chưa cung cấp danh sách và trạng thái bàn."
-          description="Không hiển thị bàn mẫu để tránh nhầm với dữ liệu vận hành. Đặt bàn chưa khả dụng."
-          action={(
-            <Button disabled icon={<Plus size={16} />}>
-              Đặt bàn
-            </Button>
-          )}
+          title="Đặt bàn chưa được hỗ trợ."
+          description="Backend hiện chưa có chức năng tạo hoặc quản lý đặt bàn."
         />
-        <div className="staff-unavailable-state">
-          <DataState status="empty" message="Chưa có dữ liệu bàn từ hệ thống." />
-        </div>
       </ContentPanel>
 
       {(dishesLoading || dishesError) && (
@@ -134,11 +160,8 @@ export default function StaffWorkspace({ onNotify }) {
             extra={<Tag color="processing">{ticketCount} đơn</Tag>}
           />
           <KitchenKDS
-            orders={orders}
+            orders={matchingOrders}
             dishes={dishes}
-            robots={robots}
-            robotsLoading={robotsLoading}
-            robotsError={robotsError}
             onChanged={refresh}
             onRetry={() => reloadOrders()}
             onNotify={onNotify}
@@ -154,7 +177,7 @@ export default function StaffWorkspace({ onNotify }) {
             className="staff-section-header"
           />
           <POSCheckout
-            orders={orders}
+            orders={matchingOrders}
             dishes={dishes}
             onChanged={refresh}
             onRetry={() => reloadOrders()}
@@ -163,22 +186,28 @@ export default function StaffWorkspace({ onNotify }) {
             error={ordersError}
           />
           <Typography.Paragraph className="staff-payment-note" type="secondary">
-            Hiện hệ thống chỉ cập nhật trạng thái đơn sang Hoàn tất; chưa ghi nhận phương thức hoặc giao dịch thanh toán.
+            Thanh toán tiền mặt sẽ tạo hóa đơn và chuyển đơn sang Hoàn tất.
           </Typography.Paragraph>
         </ContentPanel>
       </div>
 
       <ContentPanel className="staff-ai-panel">
         <SectionHeader
-          eyebrow={<><ClipboardCheck size={14} /> Kiểm tra khay</>}
-          title="Đối chiếu món trước khi giao"
+          eyebrow={<><ClipboardCheck size={14} /> Tích hợp robot</>}
+          title="Theo dõi robot và kiểm tra khay"
           className="staff-section-header"
-          extra={<Button disabled>Kiểm tra khay AI</Button>}
         />
         <Typography.Text type="secondary">
-          Chưa kết nối camera hoặc chức năng xác minh khay. Kết quả quét không được mô phỏng trên màn hình vận hành.
+          Cơ sở dữ liệu hiện tại không có bảng trạng thái robot, node định tuyến hoặc kết quả nhận diện khay. Chức năng này chưa khả dụng.
         </Typography.Text>
       </ContentPanel>
     </div>
   )
+}
+
+function matchesOrderSearch(order, search) {
+  const term = search.trim().toLocaleLowerCase()
+  return !term
+    || String(order.order_id).toLocaleLowerCase().includes(term)
+    || String(order.table_id).toLocaleLowerCase().includes(term)
 }

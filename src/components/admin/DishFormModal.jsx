@@ -1,63 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Form, Input, InputNumber, Modal, Space, Switch, Typography } from 'antd'
-import { UploadSimple } from '@phosphor-icons/react'
-import { createDish, updateDish, uploadDishImage } from '../../services/dishService'
+import { useState } from 'react'
+import { Alert, Button, Form, Input, InputNumber, Modal, Select, Switch, Typography } from 'antd'
+import { createDish, getCategories, updateDish } from '../../services/dishService'
 import { assetUrl, getErrorMessage } from '../../services/api'
-
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+import { useApi } from '../../hooks/useApi'
 
 export default function DishFormModal({ dish, onClose, onSaved }) {
   const editing = Boolean(dish)
   const [form] = Form.useForm()
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreview, setImagePreview] = useState('')
-  const imageInput = useRef(null)
-
-  useEffect(() => () => {
-    if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
-  }, [imagePreview])
-
-  const chooseImage = (event) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      setError('Chỉ chọn ảnh JPEG, PNG hoặc WebP.')
-      return
-    }
-    if (file.size > MAX_IMAGE_SIZE) {
-      setError('Ảnh không được vượt quá 5 MB.')
-      return
-    }
-    setError('')
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
-  }
+  const imageUrl = Form.useWatch('image_url', form)
+  const { data: categories, loading: categoriesLoading, error: categoriesError, reload: reloadCategories } = useApi(getCategories)
 
   const submit = async (values) => {
     setError('')
     setSaving(true)
     const payload = {
+      category_id: values.category_id,
       dish_name: values.dish_name.trim(),
       price: values.price,
       is_available: values.is_available,
+      image_url: values.image_url?.trim() || null,
+      description: values.description?.trim() || null,
     }
     if (values.ai_label_id?.trim()) payload.ai_label_id = values.ai_label_id.trim()
 
     try {
-      const savedDish = editing
-        ? await updateDish(dish.dish_id, payload)
-        : await createDish(payload)
-      if (imageFile) {
-        try {
-          await uploadDishImage(savedDish.dish_id, imageFile)
-        } catch (uploadError) {
-          onSaved(`Đã lưu món nhưng tải ảnh thất bại: ${getErrorMessage(uploadError)}`, 'danger')
-          return
-        }
+      if (editing) {
+        await updateDish(dish.dish_id, payload)
+      } else {
+        await createDish(payload)
       }
       onSaved(editing ? `Đã cập nhật "${payload.dish_name}".` : `Đã thêm món "${payload.dish_name}".`)
     } catch (requestError) {
@@ -85,14 +57,41 @@ export default function DishFormModal({ dish, onClose, onSaved }) {
         form={form}
         layout="vertical"
         initialValues={{
+          category_id: dish?.category_id,
           dish_name: dish?.dish_name ?? '',
+          description: dish?.description ?? '',
           price: dish?.price ?? null,
+          image_url: dish?.image_url ?? '',
           ai_label_id: dish?.ai_label_id ?? '',
           is_available: dish?.is_available ?? true,
         }}
         onFinish={submit}
         requiredMark="optional"
       >
+        {categoriesError && (
+          <Alert
+            className="admin-form-error"
+            type="error"
+            showIcon
+            title="Không thể tải danh mục."
+            description={categoriesError}
+            action={<Button onClick={() => reloadCategories()}>Thử lại</Button>}
+          />
+        )}
+        <Form.Item
+          label="Danh mục"
+          name="category_id"
+          rules={[{ required: true, message: 'Chọn danh mục món ăn.' }]}
+        >
+          <Select
+            loading={categoriesLoading}
+            options={(categories ?? []).map((category) => ({
+              value: category.category_id,
+              label: category.category_name,
+            }))}
+            placeholder="Chọn danh mục"
+          />
+        </Form.Item>
         <Form.Item
           label="Tên món"
           name="dish_name"
@@ -102,6 +101,9 @@ export default function DishFormModal({ dish, onClose, onSaved }) {
           ]}
         >
           <Input autoFocus placeholder="Nhập tên món" maxLength={100} />
+        </Form.Item>
+        <Form.Item label="Mô tả (không bắt buộc)" name="description">
+          <Input.TextArea maxLength={5000} rows={3} />
         </Form.Item>
         <Form.Item
           label="Giá (VNĐ)"
@@ -116,34 +118,16 @@ export default function DishFormModal({ dish, onClose, onSaved }) {
         <Form.Item label="Nhãn AI (không bắt buộc)" name="ai_label_id">
           <Input maxLength={50} placeholder="Ví dụ: pho_bo" />
         </Form.Item>
-        <Form.Item label="Ảnh món (không bắt buộc)">
-          <Space wrap>
-            <input
-              ref={imageInput}
-              className="admin-visually-hidden"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={chooseImage}
-            />
-            <Button
-              icon={<UploadSimple size={17} />}
-              disabled={saving}
-              onClick={() => imageInput.current?.click()}
-            >
-              Chọn ảnh
-            </Button>
-            <Typography.Text type="secondary">
-              {imageFile?.name ?? (dish?.image_url ? 'Giữ ảnh hiện tại' : 'JPEG, PNG hoặc WebP; tối đa 5 MB')}
-            </Typography.Text>
-          </Space>
-          {(imagePreview || dish?.image_url) && (
+        <Form.Item label="Đường dẫn ảnh (không bắt buộc)" name="image_url">
+          <Input maxLength={255} placeholder="https://... hoặc /uploads/..." />
+        </Form.Item>
+        {(imageUrl ?? dish?.image_url) && (
             <img
               className="admin-dish-preview"
-              src={imagePreview || assetUrl(dish.image_url)}
+              src={assetUrl(imageUrl ?? dish.image_url)}
               alt="Ảnh xem trước món ăn"
             />
-          )}
-        </Form.Item>
+        )}
         <Form.Item label="Đang bán" name="is_available" valuePropName="checked">
           <Switch />
         </Form.Item>

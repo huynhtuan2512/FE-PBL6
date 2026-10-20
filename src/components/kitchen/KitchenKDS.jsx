@@ -1,37 +1,24 @@
 import { useState } from 'react'
-import { Button, Space, Tag, Typography } from 'antd'
-import { Check, Circle, Fire, Timer } from '@phosphor-icons/react'
+import { Button, Checkbox, Space, Tag, Typography } from 'antd'
+import { Circle, Fire, Timer } from '@phosphor-icons/react'
 import { getErrorMessage } from '../../services/api'
 import DataState from '../common/DataState'
-import { dispatchOrder, updateOrderStatus } from '../../services/orderService'
+import { updateOrderDetailServed, updateOrderStatus } from '../../services/orderService'
 import { useOrderDetails } from '../../hooks/useOrderDetails'
 import { minutesSince } from '../../utils/format'
-
-const canDispatch = (robot) => ['IDLE', 'CHARGING'].includes(robot.robot_state)
 
 function Ticket({
   order,
   dishById,
-  robots,
-  robotsLoading,
-  robotsError,
   onChanged,
   onRetry,
   onNotify,
 }) {
   const [busy, setBusy] = useState(false)
   const { details, loading: detailsLoading, error: detailsError, retry } = useOrderDetails(order)
-  const preparing = order.order_status === 'PREPARING'
-  const availableRobot = (robots ?? []).find(canDispatch)
-  const robotBlockReason = robotsError
-    ? `Không thể xác minh trạng thái robot mới nhất. ${robotsError}`
-    : robotsLoading
-      ? 'Đang tải trạng thái robot.'
-      : !availableRobot
-        ? 'Không có robot sẵn sàng để giao đơn.'
-        : ''
+  const processing = order.order_status === 'PROCESSING'
   const actionDisabled = busy || detailsLoading || Boolean(detailsError) || details.length === 0
-    || (preparing && Boolean(robotBlockReason))
+  const servedCount = details.filter((detail) => detail.served_status).length
 
   const run = async (action, successMessage) => {
     setBusy(true)
@@ -48,24 +35,24 @@ function Ticket({
 
   const start = () =>
     run(
-      () => updateOrderStatus(order.order_id, 'PREPARING'),
+      () => updateOrderStatus(order.order_id, 'PROCESSING'),
       `Đơn #${order.order_id} bắt đầu chế biến.`,
     )
 
-  const finish = () => {
-    if (!availableRobot) return
-    return run(
-      () => dispatchOrder(order.order_id, availableRobot.id),
-      `Đã cho ${availableRobot.id} xuất phát giao đơn #${order.order_id}.`,
+  const markServed = (detail) =>
+    run(
+      () => updateOrderDetailServed(detail.detail_id, true),
+      servedCount + 1 === details.length
+        ? `Đã phục vụ đủ món của đơn #${order.order_id}; đơn sẵn sàng thanh toán.`
+        : `Đã xác nhận phục vụ món trong đơn #${order.order_id}.`,
     )
-  }
 
   return (
     <article className="kds-ticket">
       <div className="staff-ticket-header">
         <Typography.Text strong>Đơn #{order.order_id} · Bàn {order.table_id}</Typography.Text>
-        <Tag color={preparing ? 'processing' : 'gold'}>
-          {preparing ? 'Đang chế biến' : 'Chờ xử lý'}
+        <Tag color={processing ? 'processing' : 'gold'}>
+          {processing ? `Đang chế biến · ${servedCount}/${details.length} đã phục vụ` : 'Chờ xử lý'}
         </Tag>
       </div>
       <Typography.Text className="staff-ticket-time" type="secondary">
@@ -88,28 +75,38 @@ function Ticket({
         )}
         {details.map((detail) => (
           <div className="staff-ticket-dish" key={detail.detail_id}>
-            <Typography.Text strong>
-              {detail.quantity} × {dishById[detail.dish_id]?.dish_name ?? `Món ${detail.dish_id}`}
-            </Typography.Text>
+            <div className="staff-ticket-dish-row">
+              <Typography.Text strong>
+                {detail.quantity} × {dishById[detail.dish_id]?.dish_name ?? `Món ${detail.dish_id}`}
+              </Typography.Text>
+              {processing && (
+                <Checkbox
+                  checked={Boolean(detail.served_status)}
+                  disabled={busy || Boolean(detail.served_status)}
+                  onChange={() => markServed(detail)}
+                >
+                  Đã phục vụ
+                </Checkbox>
+              )}
+              {detail.notes && <Typography.Text type="secondary">Ghi chú: {detail.notes}</Typography.Text>}
+            </div>
           </div>
         ))}
       </div>
 
       <Button
         className="staff-ticket-action"
-        type={preparing ? 'primary' : 'default'}
-        icon={preparing ? <Check size={17} /> : <Circle size={17} />}
-        disabled={actionDisabled}
+        type="default"
+        icon={<Circle size={17} />}
+        disabled={actionDisabled || processing}
         loading={busy}
-        onClick={preparing ? finish : start}
+        onClick={start}
       >
-        {preparing ? 'Hoàn tất và gọi robot' : 'Bắt đầu chế biến'}
+        {processing ? 'Đang chế biến' : 'Bắt đầu chế biến'}
       </Button>
-      {preparing && robotBlockReason && (
-        <Typography.Text className="staff-ticket-hint" type="secondary">
-          {robotBlockReason}
-        </Typography.Text>
-      )}
+      {processing && <Typography.Text className="staff-ticket-hint" type="secondary">
+        Xác nhận từng món đã phục vụ; đơn sẽ chuyển sang chờ thanh toán khi hoàn tất.
+      </Typography.Text>}
       <div className="ticket-footer">
         <Fire size={14} aria-hidden="true" />
         Mã món AI:{' '}
@@ -124,9 +121,6 @@ function Ticket({
 export default function KitchenKDS({
   orders,
   dishes,
-  robots,
-  robotsLoading,
-  robotsError,
   onChanged,
   onRetry,
   onNotify,
@@ -135,7 +129,7 @@ export default function KitchenKDS({
 }) {
   const dishById = Object.fromEntries((dishes ?? []).map((dish) => [dish.dish_id, dish]))
   const tickets = (orders ?? [])
-    .filter((order) => ['PENDING', 'PREPARING'].includes(order.order_status))
+    .filter((order) => ['PENDING', 'PROCESSING'].includes(order.order_status))
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
 
   if (loading && orders === null) {
@@ -156,9 +150,6 @@ export default function KitchenKDS({
             key={order.order_id}
             order={order}
             dishById={dishById}
-            robots={robots}
-            robotsLoading={robotsLoading}
-            robotsError={robotsError}
             onChanged={onChanged}
             onNotify={onNotify}
           />

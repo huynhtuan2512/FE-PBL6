@@ -1,13 +1,9 @@
 import { useState } from 'react'
 import { Alert, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch } from 'antd'
-import { createUser, deleteUser, updateUser } from '../../services/adminService'
+import { createUser, deleteUser, getRoles, updateUser } from '../../services/adminService'
 import { getErrorMessage } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
-
-const BASE_ROLE_OPTIONS = [
-  { value: 'ROLE_02', label: 'Nhân viên (STAFF)' },
-  { value: 'ROLE_01', label: 'Quản trị viên (ADMIN)' },
-]
+import { useApi } from '../../hooks/useApi'
 
 export default function UserFormModal({ user, onClose, onSaved }) {
   const { currentUser } = useAuth()
@@ -15,23 +11,32 @@ export default function UserFormModal({ user, onClose, onSaved }) {
   const [form] = Form.useForm()
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const rolesState = useApi(getRoles)
   const self = user && String(user.user_id) === String(currentUser?.user_id)
-  const roleOptions = user?.role_id && !BASE_ROLE_OPTIONS.some((role) => role.value === user.role_id)
-    ? [...BASE_ROLE_OPTIONS, { value: user.role_id, label: user.role_name ?? 'Vai trò hiện tại' }]
-    : BASE_ROLE_OPTIONS
+  const roleOptions = (rolesState.data ?? []).map((role) => ({
+    value: role.role_id,
+    label: role.role_name,
+  }))
+  if (user?.role_id && !roleOptions.some((role) => role.value === user.role_id)) {
+    roleOptions.push({ value: user.role_id, label: user.role_name ?? 'Vai trò hiện tại' })
+  }
 
   const submit = async (values) => {
     setError('')
     setSaving(true)
     try {
       if (editing) {
-        await updateUser(user.user_id, {
+        const payload = {
           full_name: values.full_name.trim(),
           phone: values.phone?.trim() || null,
           is_active: values.is_active,
           role_id: values.role_id,
-        })
-        onSaved(`Đã cập nhật tài khoản ${user.username}.`)
+        }
+        if (values.new_password) payload.new_password = values.new_password
+        await updateUser(user.user_id, payload)
+        onSaved(values.new_password
+          ? `Đã cập nhật thông tin và đặt lại mật khẩu cho ${user.username}.`
+          : `Đã cập nhật tài khoản ${user.username}.`)
       } else {
         const payload = {
           username: values.username.trim(),
@@ -86,6 +91,16 @@ export default function UserFormModal({ user, onClose, onSaved }) {
         }}
         onFinish={submit}
       >
+        {rolesState.error && (
+          <Alert
+            className="admin-form-error"
+            type="error"
+            showIcon
+            title="Không thể tải danh sách vai trò."
+            description={rolesState.error}
+            action={<Button onClick={() => rolesState.reload()}>Thử lại</Button>}
+          />
+        )}
         {!editing && (
           <>
             <Form.Item
@@ -111,6 +126,25 @@ export default function UserFormModal({ user, onClose, onSaved }) {
           </>
         )}
         {editing && <Form.Item label="Tên đăng nhập"><Input value={user.username} disabled /></Form.Item>}
+        {editing && user.role_name === 'STAFF' && (
+          <Form.Item
+            label="Mật khẩu mới cho nhân viên (để trống nếu không đổi)"
+            name="new_password"
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (!value) return
+                  if (value.length < 6) throw new Error('Mật khẩu tối thiểu 6 ký tự.')
+                  if (new TextEncoder().encode(value).length > 72) {
+                    throw new Error('Mật khẩu không được vượt quá 72 byte.')
+                  }
+                },
+              },
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+        )}
         <Form.Item
           label="Họ và tên"
           name="full_name"
@@ -129,7 +163,7 @@ export default function UserFormModal({ user, onClose, onSaved }) {
           <Input type="tel" autoComplete="tel" maxLength={20} />
         </Form.Item>
         <Form.Item label="Vai trò" name="role_id" rules={[{ required: true, message: 'Chọn vai trò.' }]}>
-          <Select options={roleOptions} />
+          <Select loading={rolesState.loading} options={roleOptions} />
         </Form.Item>
         {editing && (
           <Form.Item label="Tài khoản đang hoạt động" name="is_active" valuePropName="checked">
@@ -162,7 +196,7 @@ export default function UserFormModal({ user, onClose, onSaved }) {
           )}
           <Space className="admin-form-submit-actions">
             <Button onClick={onClose} disabled={saving}>Hủy</Button>
-            <Button type="primary" htmlType="submit" loading={saving}>
+            <Button type="primary" htmlType="submit" loading={saving} disabled={rolesState.loading || !roleOptions.length}>
               {saving ? 'Đang lưu...' : editing ? 'Lưu thay đổi' : 'Tạo tài khoản'}
             </Button>
           </Space>
