@@ -133,12 +133,6 @@ function MenuAdmin({ onNotify }) {
       render: formatVND,
     },
     {
-      title: 'Nhãn AI',
-      dataIndex: 'ai_label_id',
-      key: 'ai_label_id',
-      render: (value) => value || '—',
-    },
-    {
       title: 'Trạng thái',
       dataIndex: 'is_available',
       key: 'is_available',

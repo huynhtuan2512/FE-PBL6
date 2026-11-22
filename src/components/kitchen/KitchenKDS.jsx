@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Checkbox, Space, Tag, Typography } from 'antd'
-import { Circle, Fire, Timer } from '@phosphor-icons/react'
+import { Circle, Timer } from '@phosphor-icons/react'
 import { getErrorMessage } from '../../services/api'
 import DataState from '../common/DataState'
 import { updateOrderDetailServed, updateOrderStatus } from '../../services/orderService'
@@ -107,13 +107,6 @@ function Ticket({
       {processing && <Typography.Text className="staff-ticket-hint" type="secondary">
         Xác nhận từng món đã phục vụ; đơn sẽ chuyển sang chờ thanh toán khi hoàn tất.
       </Typography.Text>}
-      <div className="ticket-footer">
-        <Fire size={14} aria-hidden="true" />
-        Mã món AI:{' '}
-        <span className="mono">
-          {details.map((detail) => dishById[detail.dish_id]?.ai_label_id).filter(Boolean).join(', ') || '—'}
-        </span>
-      </div>
     </article>
   )
 }

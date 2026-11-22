@@ -23,8 +23,6 @@ export default function DishFormModal({ dish, onClose, onSaved }) {
       image_url: values.image_url?.trim() || null,
       description: values.description?.trim() || null,
     }
-    if (values.ai_label_id?.trim()) payload.ai_label_id = values.ai_label_id.trim()
-
     try {
       if (editing) {
         await updateDish(dish.dish_id, payload)
@@ -62,7 +60,6 @@ export default function DishFormModal({ dish, onClose, onSaved }) {
           description: dish?.description ?? '',
           price: dish?.price ?? null,
           image_url: dish?.image_url ?? '',
-          ai_label_id: dish?.ai_label_id ?? '',
           is_available: dish?.is_available ?? true,
         }}
         onFinish={submit}
@@ -114,9 +111,6 @@ export default function DishFormModal({ dish, onClose, onSaved }) {
           ]}
         >
           <InputNumber className="admin-full-width" min={1} precision={0} placeholder="Nhập giá" />
-        </Form.Item>
-        <Form.Item label="Nhãn AI (không bắt buộc)" name="ai_label_id">
-          <Input maxLength={50} placeholder="Ví dụ: pho_bo" />
         </Form.Item>
         <Form.Item label="Đường dẫn ảnh (không bắt buộc)" name="image_url">
           <Input maxLength={255} placeholder="https://... hoặc /uploads/..." />
