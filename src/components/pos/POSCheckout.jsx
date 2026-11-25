@@ -9,7 +9,7 @@ import { formatVND } from '../../utils/format'
 
 const ORDER_STATUS = {
   PENDING: { label: 'Chờ xử lý', color: 'gold' },
-  PROCESSING: { label: 'Đang chế biến', color: 'processing' },
+  PROCESSING: { label: 'Đang xử lý robot', color: 'processing' },
   DELIVERING: { label: 'Đã phục vụ · chờ thanh toán', color: 'blue' },
 }
 

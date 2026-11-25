@@ -40,7 +40,6 @@ export default function OrderTableTransferModal({ onClose, onSaved }) {
         type="info"
         showIcon
         title="Chỉ chuyển được đơn sang bàn đang trống."
-        description="Backend sẽ cập nhật trạng thái bàn cũ và bàn mới cùng với đơn hàng."
       />
       {loading && tables === null && <DataState status="loading" message="Đang tải danh sách bàn..." />}
       {tablesError && tables === null && (

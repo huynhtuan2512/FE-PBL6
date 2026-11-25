@@ -7,13 +7,14 @@ import { useApi } from '../hooks/useApi'
 import { getInvoices } from '../services/invoiceService'
 import { getOrders } from '../services/orderService'
 import { getTables } from '../services/tableService'
+import { getRobots } from '../services/robotService'
 import { formatClock, formatVND } from '../utils/format'
 import './dashboard.css'
 
 const ORDER_STATUS = {
-  PENDING: { label: 'Chờ xử lý', color: 'gold' },
-  PROCESSING: { label: 'Đang chế biến', color: 'processing' },
-  DELIVERING: { label: 'Đã phục vụ · chờ thanh toán', color: 'blue' },
+  PENDING: { label: 'Chờ robot nhận diện', color: 'gold' },
+  PROCESSING: { label: 'Đang xử lý robot', color: 'processing' },
+  DELIVERING: { label: 'Đang/đã giao · chờ thanh toán', color: 'blue' },
   COMPLETED: { label: 'Hoàn tất', color: 'success' },
   CANCELLED: { label: 'Đã hủy', color: 'default' },
 }
@@ -29,9 +30,11 @@ export default function Dashboard() {
   const ordersState = useApi(getOrders, { interval: 5000 })
   const tablesState = useApi(getTables, { interval: 15000 })
   const invoicesState = useApi(getInvoices, { interval: 30000 })
+  const robotsState = useApi(getRobots, { interval: 5000 })
   const orders = ordersState.data ?? []
   const tables = tablesState.data ?? []
   const invoices = invoicesState.data ?? []
+  const robots = robotsState.data ?? []
   const activeOrders = orders.filter(
     (order) => !['COMPLETED', 'CANCELLED'].includes(order.order_status),
   ).length
@@ -39,6 +42,8 @@ export default function Dashboard() {
   const paidTotal = invoices
     .filter((invoice) => invoice.payment_status === 'PAID')
     .reduce((sum, invoice) => sum + Number(invoice.final_amount), 0)
+  const onlineRobots = robots.filter((robot) => robot.online).length
+  const robotsDelivering = robots.filter((robot) => robot.delivery_status === 'DELIVERING').length
 
   const orderColumns = [
     { title: 'Mã đơn', dataIndex: 'order_id', key: 'order_id' },
@@ -113,9 +118,10 @@ export default function Dashboard() {
       />
 
       <Row className="dashboard-metrics" gutter={[12, 12]}>
-        <Col xs={24} sm={8}><Card size="small"><Statistic title="Đơn chưa hoàn tất" value={ordersState.error && ordersState.data === null ? '—' : activeOrders} /></Card></Col>
-        <Col xs={24} sm={8}><Card size="small"><Statistic title="Bàn đang sử dụng" value={tablesState.error && tablesState.data === null ? '—' : `${occupiedTables}/${tables.length}`} /></Card></Col>
-        <Col xs={24} sm={8}><Card size="small"><Statistic title="Thực thu từ 100 hóa đơn gần nhất" value={invoicesState.error && invoicesState.data === null ? '—' : formatVND(paidTotal)} /></Card></Col>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="Đơn chưa hoàn tất" value={ordersState.error && ordersState.data === null ? '—' : activeOrders} /></Card></Col>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="Bàn đang sử dụng" value={tablesState.error && tablesState.data === null ? '—' : `${occupiedTables}/${tables.length}`} /></Card></Col>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="Robot đang online" value={robotsState.error && robotsState.data === null ? '—' : `${onlineRobots}/${robots.length}`} /></Card></Col>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="Robot đang giao món" value={robotsState.error && robotsState.data === null ? '—' : robotsDelivering} /></Card></Col>
       </Row>
 
       <Row gutter={[16, 16]}>
@@ -137,14 +143,47 @@ export default function Dashboard() {
             {renderData(invoicesState, invoices, invoiceColumns, 'invoice_id', 'hóa đơn')}
           </ContentPanel>
         </Col>
+        <Col xs={24}>
+          <ContentPanel className="dashboard-orders-panel">
+            <SectionHeader title="Trạng thái robot" className="dashboard-card-header" />
+            {robotsState.loading && robotsState.data === null && (
+              <DataState status="loading" message="Đang tải trạng thái robot..." />
+            )}
+            {robotsState.error && robotsState.data === null && (
+              <DataState status="error" error={robotsState.error} onRetry={() => robotsState.reload()} />
+            )}
+            {robotsState.error && robotsState.data && (
+              <Alert
+                type="warning"
+                showIcon
+                title="Không thể đồng bộ robot."
+                description="Đang hiển thị dữ liệu robot đã tải trước đó."
+                action={<button type="button" onClick={() => robotsState.reload()}>Thử lại</button>}
+              />
+            )}
+            {robotsState.data && (
+              <Table
+                className="dashboard-orders-table"
+                rowKey="robot_id"
+                columns={[
+                  { title: 'Robot', dataIndex: 'robot_id', key: 'robot_id' },
+                  { title: 'Trạng thái', dataIndex: 'delivery_status', key: 'delivery_status', render: (status) => (
+                    <Tag>{status || 'Chưa xác định'}</Tag>
+                  ) },
+                  { title: 'Bàn', dataIndex: 'table_number', key: 'table_number', render: (number) => number ? `Bàn ${number}` : '—' },
+                  { title: 'Mã đơn', dataIndex: 'order_id', key: 'order_id', render: (orderId) => orderId || '—' },
+                  { title: 'Kết nối', dataIndex: 'online', key: 'online', render: (online) => <Tag color={online ? 'success' : 'default'}>{online ? 'Online' : 'Offline'}</Tag> },
+                ]}
+                dataSource={robots}
+                pagination={false}
+                loading={robotsState.loading}
+                scroll={{ x: 680 }}
+                locale={{ emptyText: 'Chưa có robot trong cơ sở dữ liệu.' }}
+              />
+            )}
+          </ContentPanel>
+        </Col>
       </Row>
-
-      <Alert
-        type="info"
-        showIcon
-        title="Theo dõi robot chưa khả dụng."
-        description="Cơ sở dữ liệu hiện tại không có bảng robot, node hoặc định tuyến."
-      />
     </div>
   )
 }

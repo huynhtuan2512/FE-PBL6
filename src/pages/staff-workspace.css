@@ -53,6 +53,39 @@
   background: var(--color-surface);
 }
 
+.staff-table-button {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.staff-table-button:hover,
+.staff-table-button:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-card);
+}
+
+.staff-table-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.staff-order-modal-copy {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-secondary);
+}
+
+.staff-order-item-row {
+  width: 100%;
+}
+
+.staff-order-dish-select {
+  width: 15rem;
+}
+
 .staff-table-qr {
   overflow-wrap: anywhere;
 }
@@ -207,6 +240,34 @@
 
 .staff-ai-panel .ant-card-body > .ant-typography {
   display: block;
+}
+
+.staff-robot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--space-3);
+}
+
+.staff-robot-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.staff-robot-row > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.staff-robot-row .ant-typography {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1100px) {

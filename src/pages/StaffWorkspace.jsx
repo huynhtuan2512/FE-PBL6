@@ -14,15 +14,20 @@ import SectionHeader from '../components/common/SectionHeader'
 import KitchenKDS from '../components/kitchen/KitchenKDS'
 import POSCheckout from '../components/pos/POSCheckout'
 import TableGrid from '../components/tables/TableGrid'
+import TableOrderModal from '../components/tables/TableOrderModal'
+import { useAuth } from '../context/AuthContext'
 import { useApi } from '../hooks/useApi'
 import { getOrders } from '../services/orderService'
 import { getDishes } from '../services/dishService'
 import { getTables } from '../services/tableService'
+import { getRobots } from '../services/robotService'
 import { formatClock } from '../utils/format'
 import './staff-workspace.css'
 
 export default function StaffWorkspace({ onNotify }) {
   const [orderSearch, setOrderSearch] = useState('')
+  const [selectedTable, setSelectedTable] = useState(null)
+  const { currentUser } = useAuth()
   const {
     data: orders,
     loading: ordersLoading,
@@ -42,27 +47,35 @@ export default function StaffWorkspace({ onNotify }) {
     error: tablesError,
     reload: reloadTables,
   } = useApi(getTables, { interval: 30000 })
+  const {
+    data: robots,
+    loading: robotsLoading,
+    error: robotsError,
+    reload: reloadRobots,
+  } = useApi(getRobots, { interval: 5000 })
 
   const refresh = useCallback(
     () => Promise.all([
       reloadOrders({ silent: true }),
       reloadTables({ silent: true }),
+      reloadRobots({ silent: true }),
     ]),
-    [reloadOrders, reloadTables],
+    [reloadOrders, reloadTables, reloadRobots],
   )
   const refreshAll = () => {
     reloadOrders()
     reloadDishes()
     reloadTables()
+    reloadRobots()
   }
 
   const matchingOrders = useMemo(
     () => orders === null ? null : orders.filter((order) => matchesOrderSearch(order, orderSearch)),
     [orders, orderSearch],
   )
-  const isRefreshing = ordersLoading || dishesLoading || tablesLoading
+  const isRefreshing = ordersLoading || dishesLoading || tablesLoading || robotsLoading
   const ticketCount = (matchingOrders ?? []).filter((order) =>
-    ['PENDING', 'PROCESSING'].includes(order.order_status),
+    ['PENDING', 'DELIVERING'].includes(order.order_status),
   ).length
 
   return (
@@ -77,7 +90,9 @@ export default function StaffWorkspace({ onNotify }) {
               <Typography.Text type={ordersError ? 'danger' : 'secondary'}>
                 Đơn hàng: {ordersUpdatedAt ? formatClock(ordersUpdatedAt) : 'Chưa cập nhật'}
               </Typography.Text>
-              <Typography.Text type="secondary">Theo dõi robot chưa có trong cơ sở dữ liệu.</Typography.Text>
+              <Typography.Text type={robotsError ? 'danger' : 'secondary'}>
+                Robot: {robotsError ? 'Lỗi đồng bộ' : `${(robots ?? []).filter((robot) => robot.online).length}/${(robots ?? []).length} online`}
+              </Typography.Text>
             </Space>
             <Input.Search
               className="staff-order-search"
@@ -118,14 +133,25 @@ export default function StaffWorkspace({ onNotify }) {
             action={<Button onClick={() => reloadTables()}>Thử lại</Button>}
           />
         )}
-        {tables && <TableGrid tables={tables} />}
-        <Alert
-          type="info"
-          showIcon
-          title="Đặt bàn chưa được hỗ trợ."
-          description="Backend hiện chưa có chức năng tạo hoặc quản lý đặt bàn."
-        />
+        {tables && <TableGrid tables={tables} onSelectTable={setSelectedTable} />}
       </ContentPanel>
+
+      {selectedTable && (
+        <TableOrderModal
+          table={selectedTable}
+          dishes={dishes}
+          dishesLoading={dishesLoading}
+          dishesError={dishesError}
+          onRetryDishes={() => reloadDishes()}
+          user={currentUser}
+          onClose={() => setSelectedTable(null)}
+          onSaved={(message) => {
+            setSelectedTable(null)
+            onNotify(message)
+            refresh()
+          }}
+        />
+      )}
 
       {(dishesLoading || dishesError) && (
         <div className="staff-menu-state">
@@ -155,13 +181,14 @@ export default function StaffWorkspace({ onNotify }) {
         <ContentPanel className="staff-kitchen-panel">
           <SectionHeader
             eyebrow={<><CookingPot size={14} /> Bếp</>}
-            title="Món cần hoàn tất"
+            title="Trạng thái phục vụ món"
             className="staff-section-header"
             extra={<Tag color="processing">{ticketCount} đơn</Tag>}
           />
           <KitchenKDS
             orders={matchingOrders}
             dishes={dishes}
+            robots={robots}
             onChanged={refresh}
             onRetry={() => reloadOrders()}
             onNotify={onNotify}
@@ -194,12 +221,44 @@ export default function StaffWorkspace({ onNotify }) {
       <ContentPanel className="staff-ai-panel">
         <SectionHeader
           eyebrow={<><ClipboardCheck size={14} /> Tích hợp robot</>}
-          title="Theo dõi robot và kiểm tra khay"
+          title="Theo dõi robot"
           className="staff-section-header"
         />
-        <Typography.Text type="secondary">
-          Cơ sở dữ liệu hiện tại không có bảng trạng thái robot, node định tuyến hoặc kết quả nhận diện khay. Chức năng này chưa khả dụng.
-        </Typography.Text>
+        {robotsLoading && robots === null && <DataState status="loading" message="Đang tải trạng thái robot..." />}
+        {robotsError && robots === null && (
+          <DataState status="error" error={robotsError} onRetry={() => reloadRobots()} />
+        )}
+        {robotsError && robots !== null && (
+          <Alert
+            type="warning"
+            showIcon
+            title="Không thể đồng bộ trạng thái robot."
+            description="Đang hiển thị dữ liệu đã tải trước đó."
+            action={<Button onClick={() => reloadRobots()}>Thử lại</Button>}
+          />
+        )}
+        {robots && robots.length === 0 && (
+          <DataState status="empty" message="Chưa có robot trong cơ sở dữ liệu." />
+        )}
+        {robots && robots.length > 0 && (
+          <div className="staff-robot-list">
+            {robots.map((robot) => (
+              <div className="staff-robot-row" key={robot.robot_id}>
+                <div>
+                  <Typography.Text strong>{robot.robot_id}</Typography.Text>
+                  <Typography.Text type="secondary">
+                    {robot.delivery_status || 'Chưa xác định'}
+                    {robot.table_number ? ` · Bàn ${robot.table_number}` : ''}
+                    {robot.order_id ? ` · ${robot.order_id}` : ''}
+                  </Typography.Text>
+                </div>
+                <Tag color={robot.online ? 'success' : 'default'}>
+                  {robot.online ? 'Online' : 'Offline'}
+                </Tag>
+              </div>
+            ))}
+          </div>
+        )}
       </ContentPanel>
     </div>
   )

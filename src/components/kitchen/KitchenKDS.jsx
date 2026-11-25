@@ -1,59 +1,34 @@
-import { useState } from 'react'
-import { Button, Checkbox, Space, Tag, Typography } from 'antd'
-import { Circle, Timer } from '@phosphor-icons/react'
-import { getErrorMessage } from '../../services/api'
+import { Space, Tag, Typography } from 'antd'
+import { Timer } from '@phosphor-icons/react'
 import DataState from '../common/DataState'
-import { updateOrderDetailServed, updateOrderStatus } from '../../services/orderService'
 import { useOrderDetails } from '../../hooks/useOrderDetails'
 import { minutesSince } from '../../utils/format'
 
 function Ticket({
   order,
   dishById,
-  onChanged,
-  onRetry,
-  onNotify,
+  robots,
 }) {
-  const [busy, setBusy] = useState(false)
   const { details, loading: detailsLoading, error: detailsError, retry } = useOrderDetails(order)
-  const processing = order.order_status === 'PROCESSING'
-  const actionDisabled = busy || detailsLoading || Boolean(detailsError) || details.length === 0
-  const servedCount = details.filter((detail) => detail.served_status).length
-
-  const run = async (action, successMessage) => {
-    setBusy(true)
-    try {
-      await action()
-      onNotify(successMessage)
-      await onChanged()
-    } catch (error) {
-      onNotify(getErrorMessage(error), 'danger')
-    } finally {
-      setBusy(false)
-    }
+  const robotTask = (robots ?? [])
+    .flatMap((robot) => (robot.tasks ?? []).map((task) => ({ robot, task })))
+    .find(({ task }) => task.order_id === order.order_id)
+  const deliveryStatus = robotTask?.task.task_status
+  const statusConfig = {
+    WAITING_FOR_DISH: { label: 'Đang xác định món và bàn', color: 'gold' },
+    DELIVERING: { label: `Đang phục vụ · Bàn ${robotTask?.task.table_number ?? order.table_id}`, color: 'processing' },
+    DELIVERED: { label: `Đã giao món · Bàn ${robotTask?.task.table_number ?? order.table_id}`, color: 'success' },
   }
-
-  const start = () =>
-    run(
-      () => updateOrderStatus(order.order_id, 'PROCESSING'),
-      `Đơn #${order.order_id} bắt đầu chế biến.`,
-    )
-
-  const markServed = (detail) =>
-    run(
-      () => updateOrderDetailServed(detail.detail_id, true),
-      servedCount + 1 === details.length
-        ? `Đã phục vụ đủ món của đơn #${order.order_id}; đơn sẵn sàng thanh toán.`
-        : `Đã xác nhận phục vụ món trong đơn #${order.order_id}.`,
-    )
+  const status = statusConfig[deliveryStatus] ?? {
+    label: order.order_status === 'PENDING' ? 'Chờ robot nhận diện' : 'Chưa có cập nhật robot',
+    color: 'gold',
+  }
 
   return (
     <article className="kds-ticket">
       <div className="staff-ticket-header">
         <Typography.Text strong>Đơn #{order.order_id} · Bàn {order.table_id}</Typography.Text>
-        <Tag color={processing ? 'processing' : 'gold'}>
-          {processing ? `Đang chế biến · ${servedCount}/${details.length} đã phục vụ` : 'Chờ xử lý'}
-        </Tag>
+        <Tag color={status.color}>{status.label}</Tag>
       </div>
       <Typography.Text className="staff-ticket-time" type="secondary">
         <Timer size={14} aria-hidden="true" />
@@ -79,34 +54,14 @@ function Ticket({
               <Typography.Text strong>
                 {detail.quantity} × {dishById[detail.dish_id]?.dish_name ?? `Món ${detail.dish_id}`}
               </Typography.Text>
-              {processing && (
-                <Checkbox
-                  checked={Boolean(detail.served_status)}
-                  disabled={busy || Boolean(detail.served_status)}
-                  onChange={() => markServed(detail)}
-                >
-                  Đã phục vụ
-                </Checkbox>
-              )}
+              <Tag color={detail.served_status ? 'success' : 'default'}>
+                {detail.served_status ? 'Đã giao tới bàn' : 'Chờ robot giao'}
+              </Tag>
               {detail.notes && <Typography.Text type="secondary">Ghi chú: {detail.notes}</Typography.Text>}
             </div>
           </div>
         ))}
       </div>
-
-      <Button
-        className="staff-ticket-action"
-        type="default"
-        icon={<Circle size={17} />}
-        disabled={actionDisabled || processing}
-        loading={busy}
-        onClick={start}
-      >
-        {processing ? 'Đang chế biến' : 'Bắt đầu chế biến'}
-      </Button>
-      {processing && <Typography.Text className="staff-ticket-hint" type="secondary">
-        Xác nhận từng món đã phục vụ; đơn sẽ chuyển sang chờ thanh toán khi hoàn tất.
-      </Typography.Text>}
     </article>
   )
 }
@@ -119,20 +74,21 @@ export default function KitchenKDS({
   onNotify,
   loading,
   error,
+  robots,
 }) {
   const dishById = Object.fromEntries((dishes ?? []).map((dish) => [dish.dish_id, dish]))
   const tickets = (orders ?? [])
-    .filter((order) => ['PENDING', 'PROCESSING'].includes(order.order_status))
+    .filter((order) => ['PENDING'].includes(order.order_status))
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
 
   if (loading && orders === null) {
-    return <DataState status="loading" message="Đang tải đơn cần chế biến..." />
+    return <DataState status="loading" message="Đang tải trạng thái phục vụ..." />
   }
   if (error && orders === null) {
     return <DataState status="error" error={error} onRetry={onRetry} />
   }
   if (tickets.length === 0) {
-    return <DataState status="empty" message="Không có đơn nào cần chế biến." />
+    return <DataState status="empty" message="Không có đơn nào đang chờ hoặc đang được robot phục vụ." />
   }
 
   return (
@@ -143,8 +99,7 @@ export default function KitchenKDS({
             key={order.order_id}
             order={order}
             dishById={dishById}
-            onChanged={onChanged}
-            onNotify={onNotify}
+            robots={robots}
           />
         ))}
       </div>

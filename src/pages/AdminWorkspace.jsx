@@ -19,7 +19,7 @@ import DataState from '../components/common/DataState'
 import PageHeader from '../components/common/PageHeader'
 import SectionHeader from '../components/common/SectionHeader'
 import { useApi } from '../hooks/useApi'
-import { getAdminDishes, setDishStatus } from '../services/dishService'
+import { getAdminDishes, getCategories, setDishStatus } from '../services/dishService'
 import { getAuditLogs, getUsers } from '../services/adminService'
 import { assetUrl, getErrorMessage } from '../services/api'
 import { formatClock, formatVND } from '../utils/format'
@@ -94,6 +94,11 @@ export default function AdminWorkspace({ onNotify }) {
 
 function MenuAdmin({ onNotify }) {
   const { data: dishes, loading, error, reload } = useApi(getAdminDishes)
+  const categoriesState = useApi(getCategories)
+  const categoryNameById = useMemo(
+    () => Object.fromEntries((categoriesState.data ?? []).map((category) => [category.category_id, category.category_name])),
+    [categoriesState.data],
+  )
   const [editing, setEditing] = useState(undefined)
   const [statusChanging, setStatusChanging] = useState(null)
   const [actionError, setActionError] = useState('')
@@ -125,6 +130,12 @@ function MenuAdmin({ onNotify }) {
           <span>{name}</span>
         </Space>
       ),
+    },
+    {
+      title: 'Danh mục',
+      dataIndex: 'category_id',
+      key: 'category_id',
+      render: (categoryId) => categoryNameById[categoryId] || categoryId || '—',
     },
     {
       title: 'Giá',
