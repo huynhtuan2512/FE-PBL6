@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { getTableFromUrl } from './mockData';
 import { createOrder, getCategories, getMenu, getTableStatus } from './services/restaurantApi';
@@ -25,12 +25,9 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [note, setNote] = useState('');
   const [confirmedOrder, setConfirmedOrder] = useState(null);
+  const [trackingRefreshKey, setTrackingRefreshKey] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [orderError, setOrderError] = useState('');
-  const trackingStorageKey = `restaurant:last-order:${tableId}`;
-  const [trackedOrderId, setTrackedOrderId] = useState(
-    () => window.localStorage.getItem(trackingStorageKey) || '',
-  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -54,8 +51,17 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([getMenu(controller.signal), getCategories(controller.signal)])
-      .then(([menu, categoryList]) => {
+    let requestPending = false;
+
+    const refreshMenu = async () => {
+      if (requestPending) return;
+      requestPending = true;
+      try {
+        const [menu, categoryList] = await Promise.all([
+          getMenu(controller.signal),
+          getCategories(controller.signal),
+        ]);
+        if (controller.signal.aborted) return;
         const categoryNames = new Map(categoryList.map((category) => [category.category_id, category.category_name]));
         setDishes(menu.map((dish) => ({
           ...dish,
@@ -63,26 +69,54 @@ export default function App() {
         })));
         setCategories(['Tất cả', ...categoryList.map((category) => category.category_name)]);
         setMenuError('');
-      })
-      .catch((error) => {
-        if (error.name !== 'AbortError') setMenuError(error.message || 'Không thể tải thực đơn.')
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setMenuLoading(false)
-      });
+      } catch (error) {
+        if (!controller.signal.aborted) setMenuError(error.message || 'Không thể tải thực đơn.')
+      } finally {
+        requestPending = false;
+        if (!controller.signal.aborted) setMenuLoading(false);
+      }
+    };
 
-    return () => controller.abort();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshMenu();
+    };
+
+    refreshMenu();
+    const timer = window.setInterval(refreshMenu, 10000);
+    window.addEventListener('focus', refreshMenu);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshMenu);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, []);
 
   const filteredDishes = useMemo(() => dishes.filter((dish) => {
     const matchesCategory = activeCategory === 'Tất cả' || dish.category === activeCategory;
     const matchesQuery = dish.dish_name.toLowerCase().includes(query.trim().toLowerCase());
     return matchesCategory && matchesQuery;
-  }), [activeCategory, query]);
+  }), [activeCategory, dishes, query]);
 
   const cartItems = useMemo(() => Object.values(cart), [cart]);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const cartTotal = cartItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+
+  useEffect(() => {
+    if (menuLoading) return;
+    const availableDishIds = new Set(dishes.map((dish) => dish.dish_id));
+    const unavailableItems = cartItems.filter((item) => !availableDishIds.has(item.dish_id));
+    if (!unavailableItems.length) return;
+
+    setCart((current) => Object.fromEntries(
+      Object.entries(current).filter(([dishId]) => availableDishIds.has(Number(dishId))),
+    ));
+    setOrderError(
+      `${unavailableItems.map((item) => item.dish_name).join(', ')} đã ngừng bán và được bỏ khỏi giỏ hàng.`,
+    );
+  }, [cartItems, dishes, menuLoading]);
+
   const tableCanOrder = table && ['EMPTY', 'OCCUPIED'].includes(table.status);
   const tableStatusText = {
     EMPTY: 'Bàn trống · sẵn sàng nhận món',
@@ -90,11 +124,6 @@ export default function App() {
     RESERVED: 'Bàn đã được đặt · hiện chưa thể gọi món',
     CLEANING: 'Bàn đang được dọn · hiện chưa thể gọi món',
   }[table?.status] ?? table?.status;
-
-  const rememberTrackedOrder = useCallback((orderId) => {
-    setTrackedOrderId(orderId);
-    window.localStorage.setItem(trackingStorageKey, orderId);
-  }, [trackingStorageKey]);
 
   const addToCart = (dish) => setCart((current) => ({
     ...current,
@@ -134,7 +163,7 @@ export default function App() {
         })),
       });
       setConfirmedOrder(order);
-      rememberTrackedOrder(order.order_id);
+      setTrackingRefreshKey((current) => current + 1);
       setCart({});
       setNote('');
     } catch (error) {
@@ -181,9 +210,8 @@ export default function App() {
         {menuError && <div role="alert" className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p className="font-bold">Không thể tải thực đơn từ máy chủ.</p><p className="mt-1">{menuError}</p><button type="button" onClick={() => window.location.reload()} className="mt-3 min-h-[44px] rounded-full bg-red-600 px-4 py-2 font-bold text-white">Thử lại</button></div>}
         <CustomerOrderTracking
           tableId={tableId}
-          initialOrderId={trackedOrderId}
           dishes={dishes}
-          onOrderFound={rememberTrackedOrder}
+          refreshKey={trackingRefreshKey}
         />
         <section className="mt-8" aria-labelledby="category-title">
           <div className="mb-4 flex items-end justify-between gap-4">

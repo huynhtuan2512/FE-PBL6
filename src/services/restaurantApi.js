@@ -32,6 +32,9 @@ export const getTableStatus = (tableId, signal) =>
 export const getOrder = (orderId, tableId, signal) =>
   request(`/public/orders/${encodeURIComponent(orderId)}?table_id=${encodeURIComponent(tableId)}`, { signal })
 
+export const getActiveOrders = (tableId, signal) =>
+  request(`/public/orders?table_id=${encodeURIComponent(tableId)}`, { signal })
+
 export const createOrder = (payload) =>
   request('/orders', {
     method: 'POST',
